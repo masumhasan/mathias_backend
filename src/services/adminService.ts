@@ -1,5 +1,6 @@
 import { User } from '../models/User';
 import { Conversation } from '../models/Conversation';
+import { AuditLog, AuditEventType } from '../models/AuditLog';
 import { createError } from '../middleware/errorHandler';
 
 export interface LegalAdviceClient {
@@ -227,4 +228,54 @@ export async function getClientChatDetail(id: string) {
         }
       : null,
   };
+}
+
+export interface ActivityItem {
+  id: string;
+  action: string;
+  timestamp: Date;
+}
+
+const ACTIVITY_LABELS: Record<AuditEventType, string> = {
+  SESSION_CREATED: 'logged in',
+  SESSION_ENDED: 'logged out',
+  SESSION_EMAIL_NOT_FOUND: 'attempted login with unknown email',
+  PROFILE_UPDATED: 'updated their profile',
+  PASSWORD_CHANGED: 'changed their password',
+  PASSWORD_RESET_REQUESTED: 'requested a password reset',
+  PASSWORD_RESET_COMPLETED: 'completed a password reset',
+  CHAT_QUERY: 'sent a chat message',
+  CHAT_RESPONSE: 'received a chat response',
+  CHAT_ERROR: 'hit a chat error',
+  LEGAL_CHAT_QUERY: 'started legal consultation',
+  LEGAL_CHAT_RESPONSE: 'received legal advice',
+  CLIENT_CHAT_QUERY: 'sent a client chat message',
+  CLIENT_CHAT_RESPONSE: 'received a client chat reply',
+  SYNC_STARTED: 'started an email sync',
+  SYNC_COMPLETED: 'completed an email sync',
+  SYNC_FOLDER_DONE: 'synced a mail folder',
+  SYNC_ERROR: 'hit an email sync error',
+  RATE_LIMIT_EXCEEDED: 'hit a rate limit',
+  VALIDATION_ERROR: 'submitted invalid data',
+};
+
+/**
+ * Backs the Overview page's "Recent Activity" feed with the same AuditLog
+ * trail already written throughout the app, instead of mock data.
+ */
+export async function listRecentActivity(limit = 10): Promise<ActivityItem[]> {
+  const logs = await AuditLog.find()
+    .sort({ timestamp: -1 })
+    .limit(limit)
+    .select('eventType userEmail timestamp')
+    .lean();
+
+  return logs.map((log) => {
+    const label = ACTIVITY_LABELS[log.eventType] ?? log.eventType;
+    return {
+      id: log._id.toString(),
+      action: log.userEmail ? `${log.userEmail} ${label}` : label,
+      timestamp: log.timestamp,
+    };
+  });
 }

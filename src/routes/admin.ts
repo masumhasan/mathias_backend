@@ -9,6 +9,7 @@ import {
   deleteLegalAdviceClient,
   listClientChats,
   getClientChatDetail,
+  listRecentActivity,
 } from '../services/adminService';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { requireAuth } from '../middleware/requireAuth';
@@ -125,6 +126,20 @@ router.get(
     requireValidId(req.params.id);
     const client = await getClientChatDetail(req.params.id);
     res.json({ client });
+  }),
+);
+
+/**
+ * GET /api/admin/activity
+ * Lists the most recent audit log entries across the app, for the Overview
+ * page's "Recent Activity" feed.
+ */
+router.get(
+  '/activity',
+  asyncHandler(async (req: Request, res: Response) => {
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    const activity = await listRecentActivity(limit);
+    res.json({ activity });
   }),
 );
 
