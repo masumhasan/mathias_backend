@@ -6,6 +6,7 @@ export interface LegalAdviceClient {
   id: string;
   name: string;
   email: string;
+  role: 'user' | 'client';
   emailVerified: boolean;
   banned: boolean;
   conversationCount: number;
@@ -31,7 +32,7 @@ export interface UpdateClientInput {
 }
 
 async function attachActivity(
-  users: { _id: { toString(): string }; firstName: string; lastName: string; email: string; emailVerified: boolean; banned: boolean; createdAt: Date }[],
+  users: { _id: { toString(): string }; firstName: string; lastName: string; email: string; role?: 'user' | 'admin' | 'client'; emailVerified: boolean; banned: boolean; createdAt: Date }[],
 ): Promise<LegalAdviceClient[]> {
   const activity = await Conversation.aggregate([
     {
@@ -50,6 +51,9 @@ async function attachActivity(
       id: user._id.toString(),
       name: `${user.firstName} ${user.lastName}`.trim(),
       email: user.email,
+      // Accounts created before `role` existed have no value stored at all —
+      // those predate the 'client' role entirely, so they're 'user' accounts.
+      role: user.role === 'client' ? 'client' : 'user',
       emailVerified: user.emailVerified,
       banned: user.banned,
       conversationCount: userActivity?.conversationCount ?? 0,
@@ -71,7 +75,7 @@ const NON_ADMIN_FILTER = { role: { $ne: 'admin' } };
 
 export async function listLegalAdviceClients(): Promise<LegalAdviceClient[]> {
   const users = await User.find(NON_ADMIN_FILTER)
-    .select('firstName lastName email emailVerified banned createdAt')
+    .select('firstName lastName email role emailVerified banned createdAt')
     .sort({ createdAt: -1 })
     .lean();
 
