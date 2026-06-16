@@ -7,6 +7,8 @@ import chatRoutes from './routes/chat';
 import legalChatRoutes from './routes/legalChat';
 import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
+import adminRoutes from './routes/admin';
+import clientChatRoutes from './routes/clientChat';
 
 const app = express();
 
@@ -45,6 +47,8 @@ app.use('/api/health', healthRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/legal-chat', legalChatRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/client-chat', clientChatRoutes);
 
 // 404 handler
 app.use((_req, res) => {

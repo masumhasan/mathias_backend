@@ -56,20 +56,25 @@ export async function createSession(
   return { sessionId: session.id as string, userEmail: normalized, emailCount };
 }
 
-export async function sendMessage(
-  sessionId: string,
+export interface GroundedHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Core email-grounded reply generation, shared by the legacy anonymous
+ * ChatSession flow and the authenticated /client-chat conversation flow.
+ */
+export async function generateGroundedReply(
+  userEmail: string,
   userMessage: string,
-): Promise<ChatResult | null> {
-  const session = await ChatSession.findById(sessionId);
-  if (!session) return null;
-
+  history: GroundedHistoryMessage[],
+): Promise<ChatResult> {
   const intent = detectIntent(userMessage);
-  const emails = await findRelevantEmails(session.userEmail, userMessage, intent.wantsSent);
-  const context = buildEmailContext(emails as unknown as IEmail[], session.userEmail, intent.wantsFullBody);
+  const emails = await findRelevantEmails(userEmail, userMessage, intent.wantsSent);
+  const context = buildEmailContext(emails as unknown as IEmail[], userEmail, intent.wantsFullBody);
 
-  const historyMessages = session.messages
-    .slice(-MAX_HISTORY_MESSAGES)
-    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+  const historyMessages = history.slice(-MAX_HISTORY_MESSAGES);
 
   const openai = getOpenAIClient();
 
@@ -89,20 +94,35 @@ export async function sendMessage(
 
   const assistantContent = completion.choices[0]?.message?.content ?? 'No response generated.';
 
-  session.messages.push({ role: 'user', content: userMessage, timestamp: new Date() });
-  session.messages.push({ role: 'assistant', content: assistantContent, timestamp: new Date() });
-  session.lastActiveAt = new Date();
-  await session.save();
-
   logger.info('Chat response generated', {
-    sessionId,
-    userEmail: session.userEmail,
+    userEmail,
     emailsUsed: emails.length,
     promptTokens: completion.usage?.prompt_tokens,
     completionTokens: completion.usage?.completion_tokens,
   });
 
   return { response: assistantContent, emailsUsed: emails.length };
+}
+
+export async function sendMessage(
+  sessionId: string,
+  userMessage: string,
+): Promise<ChatResult | null> {
+  const session = await ChatSession.findById(sessionId);
+  if (!session) return null;
+
+  const historyMessages = session.messages
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+  const result = await generateGroundedReply(session.userEmail, userMessage, historyMessages);
+
+  session.messages.push({ role: 'user', content: userMessage, timestamp: new Date() });
+  session.messages.push({ role: 'assistant', content: result.response, timestamp: new Date() });
+  session.lastActiveAt = new Date();
+  await session.save();
+
+  return result;
 }
 
 export async function getSessionHistory(

@@ -15,11 +15,13 @@ export interface RegisterInput {
   lastName: string;
   phone?: string;
   country?: string;
+  role?: 'user' | 'client';
 }
 
 export interface PublicUser {
   id: string;
   email: string;
+  role: 'user' | 'admin' | 'client';
   firstName: string;
   lastName: string;
   phone?: string;
@@ -42,6 +44,7 @@ function toPublicUser(user: IUser): PublicUser {
   return {
     id: user.id as string,
     email: user.email,
+    role: user.role,
     firstName: user.firstName,
     lastName: user.lastName,
     phone: user.phone,
@@ -104,7 +107,7 @@ async function sendPasswordResetEmail(to: string, otp: string): Promise<void> {
  * email — regenerates and resends the OTP for that same account instead of
  * erroring, so an abandoned signup can simply be retried.
  */
-export async function registerUser(input: RegisterInput): Promise<{ email: string }> {
+export async function registerUser(input: RegisterInput): Promise<{ email: string; otp: string }> {
   const email = input.email.toLowerCase().trim();
   const existing = await User.findOne({ email });
 
@@ -130,6 +133,7 @@ export async function registerUser(input: RegisterInput): Promise<{ email: strin
     await User.create({
       email,
       passwordHash,
+      role: input.role ?? 'user',
       firstName: input.firstName,
       lastName: input.lastName,
       phone: input.phone,
@@ -144,10 +148,10 @@ export async function registerUser(input: RegisterInput): Promise<{ email: strin
   await sendOtpEmail(email, otp);
   logger.info('Registration OTP sent', { email });
 
-  return { email };
+  return { email, otp };
 }
 
-export async function resendOtp(emailInput: string): Promise<void> {
+export async function resendOtp(emailInput: string): Promise<{ otp: string }> {
   const email = emailInput.toLowerCase().trim();
   const user = await User.findOne({ email });
 
@@ -162,6 +166,8 @@ export async function resendOtp(emailInput: string): Promise<void> {
 
   await sendOtpEmail(email, otp);
   logger.info('OTP resent', { email });
+
+  return { otp };
 }
 
 export async function verifyOtp(
@@ -214,6 +220,10 @@ export async function loginUser(
 
   if (!user.emailVerified) {
     throw createError('Please verify your email before logging in.', 403, 'EMAIL_NOT_VERIFIED');
+  }
+
+  if (user.banned) {
+    throw createError('This account has been suspended. Please contact support.', 403, 'ACCOUNT_BANNED');
   }
 
   const token = signToken(user);

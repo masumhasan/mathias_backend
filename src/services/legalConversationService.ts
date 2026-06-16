@@ -23,8 +23,12 @@ function deriveTitle(message: string): string {
   return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 }
 
+// Conversations created before `kind` existed have no value stored in the DB
+// at all — treat those as 'legal' rather than only matching an explicit value.
+const LEGAL_FILTER = { kind: { $ne: 'client' } };
+
 export async function listConversations(userId: string): Promise<ConversationSummary[]> {
-  const conversations = await Conversation.find({ userId })
+  const conversations = await Conversation.find({ userId, ...LEGAL_FILTER })
     .sort({ updatedAt: -1 })
     .select('title updatedAt')
     .lean();
@@ -37,17 +41,17 @@ export async function listConversations(userId: string): Promise<ConversationSum
 }
 
 export async function createConversation(userId: string): Promise<ConversationSummary> {
-  const conversation = await Conversation.create({ userId, title: 'New Consultation', messages: [] });
+  const conversation = await Conversation.create({ userId, kind: 'legal', title: 'New Consultation', messages: [] });
   return { id: conversation.id as string, title: conversation.title, updatedAt: conversation.updatedAt };
 }
 
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
-  const result = await Conversation.deleteOne({ _id: conversationId, userId });
+  const result = await Conversation.deleteOne({ _id: conversationId, userId, ...LEGAL_FILTER });
   if (result.deletedCount === 0) throw createError('Conversation not found.', 404);
 }
 
 export async function getConversation(userId: string, conversationId: string): Promise<ConversationDetail> {
-  const conversation = await Conversation.findOne({ _id: conversationId, userId });
+  const conversation = await Conversation.findOne({ _id: conversationId, userId, ...LEGAL_FILTER });
   if (!conversation) throw createError('Conversation not found.', 404);
 
   return {
@@ -67,7 +71,7 @@ export async function sendMessageInConversation(
   conversationId: string,
   message: string,
 ): Promise<SendMessageResult> {
-  const conversation = await Conversation.findOne({ _id: conversationId, userId });
+  const conversation = await Conversation.findOne({ _id: conversationId, userId, ...LEGAL_FILTER });
   if (!conversation) throw createError('Conversation not found.', 404);
 
   const isFirstMessage = conversation.messages.length === 0;

@@ -11,9 +11,12 @@ import {
 import { audit } from '../services/auditService';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { requireAuth } from '../middleware/requireAuth';
+import { requireRole } from '../middleware/requireRole';
 import { chatLimiter, sessionLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
+
+router.use(requireAuth, requireRole('user'));
 
 const SendMessageSchema = z.object({
   message: z

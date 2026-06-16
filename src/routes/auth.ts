@@ -25,7 +25,13 @@ const RegisterSchema = z.object({
   lastName: z.string().min(1).max(100).trim(),
   phone: z.string().max(30).trim().optional().or(z.literal('')),
   country: z.string().max(100).trim().optional().or(z.literal('')),
+  role: z.enum(['user', 'client']).optional().default('user'),
 });
+
+// Dev-only convenience: the OTP is normally only delivered by email. Exposing
+// it in the API response (non-production only) lets us register/verify
+// without a working mail setup while testing the client-chat portal.
+const isDev = process.env.NODE_ENV !== 'production';
 
 const VerifyOtpSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
@@ -74,7 +80,7 @@ router.post(
   authLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const input = RegisterSchema.parse(req.body);
-    const { email } = await registerUser({
+    const { email, otp } = await registerUser({
       ...input,
       phone: input.phone || undefined,
       country: input.country || undefined,
@@ -82,7 +88,11 @@ router.post(
 
     await audit('SESSION_CREATED', req, { userEmail: email, details: { stage: 'register' } });
 
-    res.status(201).json({ email, message: 'Verification code sent to your email.' });
+    res.status(201).json({
+      email,
+      message: 'Verification code sent to your email.',
+      ...(isDev ? { otp } : {}),
+    });
   }),
 );
 
@@ -109,9 +119,9 @@ router.post(
   otpLimiter,
   asyncHandler(async (req: Request, res: Response) => {
     const { email } = ResendOtpSchema.parse(req.body);
-    await resendOtp(email);
+    const { otp } = await resendOtp(email);
 
-    res.json({ message: 'Verification code resent.' });
+    res.json({ message: 'Verification code resent.', ...(isDev ? { otp } : {}) });
   }),
 );
 

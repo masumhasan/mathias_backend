@@ -6,8 +6,11 @@ export interface ConversationMessage {
   timestamp: Date;
 }
 
+export type ConversationKind = 'legal' | 'client';
+
 export interface IConversation extends Document {
   userId: Types.ObjectId;
+  kind: ConversationKind;
   title: string;
   messages: ConversationMessage[];
   createdAt: Date;
@@ -26,6 +29,7 @@ const ConversationMessageSchema = new Schema<ConversationMessage>(
 const ConversationSchema = new Schema<IConversation>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    kind: { type: String, enum: ['legal', 'client'], default: 'legal', required: true },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     messages: { type: [ConversationMessageSchema], default: [] },
   },

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAuthToken } from '../services/authService';
+import { User } from '../models/User';
 import { createError } from './errorHandler';
 
 declare global {
@@ -12,7 +13,7 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
 
@@ -23,6 +24,19 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
   try {
     const payload = verifyAuthToken(token);
+
+    // Checked against the DB (not just the JWT) so a ban takes effect on an
+    // already-issued session immediately, instead of waiting for it to expire.
+    const user = await User.findById(payload.userId).select('banned');
+    if (!user) {
+      next(createError('Invalid or expired session. Please log in again.', 401));
+      return;
+    }
+    if (user.banned) {
+      next(createError('This account has been suspended. Please contact support.', 403, 'ACCOUNT_BANNED'));
+      return;
+    }
+
     req.userId = payload.userId;
     req.userEmail = payload.email;
     next();

@@ -4,6 +4,7 @@ import cron from 'node-cron';
 import app from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { emailSyncService } from './services/emailSyncService';
+import { seedSuperAdmin } from './services/seedAdminService';
 import logger from './utils/logger';
 
 const PORT = parseInt(process.env.PORT || '3005', 10);
@@ -12,6 +13,8 @@ const SYNC_SCHEDULE = process.env.SYNC_SCHEDULE || '0 * * * *'; // Every hour
 async function start(): Promise<void> {
   await connectDatabase();
   logger.info('Database connected');
+
+  await seedSuperAdmin();
 
   const server = http.createServer(app);
 
