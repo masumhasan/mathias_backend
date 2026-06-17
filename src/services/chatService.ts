@@ -9,9 +9,9 @@ import { getOpenAIClient, OPENAI_MODEL } from '../config/openai';
 import { CLIENT_CHAT_SYSTEM_PROMPT } from '../config/prompts/clientChatPrompt';
 import logger from '../utils/logger';
 
-const MAX_CONTEXT_EMAILS = 15;
-const ALWAYS_RECENT = 5;   // newest emails always included — anchors follow-up questions
-const TEXT_SEARCH_MAX = 10; // additional topically relevant emails from text search
+// Fetch the last 10 emails chronologically so the AI can follow the case
+// progression step by step, matching the attorney's training data approach.
+const MAX_CONTEXT_EMAILS = 10;
 const MAX_BODY_DEFAULT = 1_500;
 const MAX_BODY_FULL_REQUEST = 8_000; // user explicitly asked for full email content
 const MAX_HISTORY_MESSAGES = 10;
@@ -131,95 +131,44 @@ export async function getSessionHistory(
   return ChatSession.findById(sessionId).lean() as Promise<LeanSession | null>;
 }
 
+/**
+ * Fetches the last MAX_CONTEXT_EMAILS emails where the client's email is a
+ * participant, sorted chronologically (oldest→newest) so the AI can follow
+ * the case progression step by step — matching the attorney training data approach.
+ * When the client asks only about emails they sent, the filter narrows to outgoing mail.
+ */
 async function findRelevantEmails(
   userEmail: string,
-  query: string,
+  _query: string,
   wantsSent: boolean,
 ): Promise<LeanEmail[]> {
-  const trimmedQuery = query.trim();
-
   const baseFilter = wantsSent
     ? { 'from.address': new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
     : { participants: userEmail };
 
-  // ── Tier 1: always fetch the N most recent emails ────────────────────────────
-  // This anchors follow-up questions to the same conversation thread the user
-  // was just discussing, regardless of what the text search returns.
-  const recentPromise = Email.find(baseFilter)
+  // Fetch newest first so we always get the most recent 10, then reverse to
+  // chronological order before passing to the AI.
+  const emails = (await Email.find(baseFilter)
     .sort({ date: -1 })
-    .limit(ALWAYS_RECENT)
-    .lean();
+    .limit(MAX_CONTEXT_EMAILS)
+    .lean()) as unknown as LeanEmail[];
 
-  // ── Tier 2: text search for topically relevant emails ────────────────────────
-  // Only run if there are meaningful non-stopword terms in the query.
-  const stopwords = new Set([
-    'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'is',
-    'are', 'was', 'that', 'this', 'with', 'i', 'me', 'my', 'you', 'it', 'type',
-    'full', 'last', 'email', 'sent', 'send', 'write', 'show', 'get', 'give',
-    'tell', 'what', 'how', 'when', 'where', 'which', 'who', 'from', 'by', 'out',
-    'have', 'has', 'had', 'do', 'did', 'will', 'would', 'can', 'could', 'please',
-    'entire', 'complete', 'whole', 'exact', 'print', 'english', 'german', 'french',
-    'into', 'latest', 'recent', 'new', 'old', 'first', 'second', 'third', 'number',
-    'are', 'the', 'status', 'case', 'about', 'any', 'all', 'not', 'more', 'also',
-  ]);
-  const meaningfulTerms = trimmedQuery
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 2 && !stopwords.has(t));
+  // Oldest→newest: EMAIL 1 = oldest context, last email = current case status
+  emails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  let textResults: LeanEmail[] = [];
-  if (meaningfulTerms.length > 0) {
-    try {
-      textResults = (await Email.find(
-        { ...baseFilter, $text: { $search: meaningfulTerms.join(' ') } },
-        { score: { $meta: 'textScore' } },
-      )
-        .sort({ score: { $meta: 'textScore' }, date: -1 })
-        .limit(TEXT_SEARCH_MAX)
-        .lean()) as unknown as LeanEmail[];
+  logger.info(`findRelevantEmails: fetched ${emails.length} emails (chronological)`, {
+    userEmail,
+    wantsSent,
+  });
 
-      logger.info(`findRelevantEmails: text search returned ${textResults.length} results`, {
-        userEmail,
-        wantsSent,
-        terms: meaningfulTerms,
-      });
-    } catch (err) {
-      logger.warn('findRelevantEmails: text search error', {
-        userEmail,
-        error: (err as Error).message,
-      });
-    }
-  }
-
-  const recentResults = (await recentPromise) as unknown as LeanEmail[];
-
-  // ── Merge: recent first (anchor), then text results (topical), deduped ───────
-  const seen = new Set<string>();
-  const combined: LeanEmail[] = [];
-  for (const e of [...recentResults, ...textResults]) {
-    const id = String(e._id);
-    if (!seen.has(id)) {
-      seen.add(id);
-      combined.push(e);
-    }
-  }
-
-  // Re-sort by date descending so EMAIL 1 is always the newest in the context
-  combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  logger.info(
-    `findRelevantEmails: combined ${combined.length} emails (${recentResults.length} recent + ${textResults.length} text, deduped)`,
-    { userEmail, wantsSent },
-  );
-
-  return combined.slice(0, MAX_CONTEXT_EMAILS);
+  return emails;
 }
 
 function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: boolean): string {
-  if (!emails.length) return 'No relevant emails found in the records.';
+  if (!emails.length) return 'No email records found for this client.';
 
   const bodyLimit = wantsFullBody ? MAX_BODY_FULL_REQUEST : MAX_BODY_DEFAULT;
+  const total = emails.length;
 
   return emails
     .map((email, idx) => {
@@ -236,7 +185,10 @@ function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: b
         ? `${body}${truncated}`
         : '[Email body not stored — HTML-only email synced before text extraction was enabled. Use subject line and metadata above for context.]';
 
-      return `--- EMAIL ${idx + 1} [${direction}] ---
+      // Label the last email explicitly as the most recent so the AI can anchor status answers
+      const recencyLabel = idx === total - 1 ? ' — MOST RECENT' : '';
+
+      return `--- EMAIL ${idx + 1}${recencyLabel} [${direction}] ---
 Date: ${email.date.toUTCString()}
 From: ${from}
 To: ${to}
@@ -249,13 +201,13 @@ ${bodySection}
 }
 
 function buildUserPrompt(emailContext: string, question: string): string {
-  return `RELEVANT EMAIL RECORDS (sorted newest first — EMAIL 1 is the most recent):
+  return `CLIENT EMAIL RECORDS (sorted oldest→newest — read in order to follow the case progression; the last email marked MOST RECENT is the current case status):
 
 ${emailContext}
 
 ---
 
-INSTRUCTION: The conversation history above shows what was previously discussed. If this is a follow-up question (e.g. "what are those documents?", "tell me more", "which one?"), first check the conversation history to identify which email or topic is being referenced, then answer using that specific email from the records above. Do not switch to a different email unless the question explicitly asks about a different topic.
+INSTRUCTION: Read the emails above in sequence to understand the case progression before answering. For "what is the status" or "what happened" questions, anchor the answer on the MOST RECENT email, then use earlier emails for background. If this is a follow-up question (e.g. "what are those documents?", "tell me more", "which one?"), check the conversation history to identify which email or topic was being discussed, then answer from that specific email — do not switch to a different email unless the question explicitly asks about a different topic.
 
 QUESTION: ${question}`;
 }
