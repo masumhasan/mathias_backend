@@ -85,7 +85,7 @@ async function sendOtpEmail(to: string, otp: string): Promise<void> {
   await transporter.sendMail({
     from: MAIL_FROM,
     to,
-    subject: 'Your MS Advocate verification code',
+    subject: 'Your EUVisaAdvice verification code',
     text: `Your verification code is ${otp}. It expires in 10 minutes.`,
     html: `<p>Your verification code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>This code expires in 10 minutes.</p>`,
   });
@@ -96,7 +96,7 @@ async function sendPasswordResetEmail(to: string, otp: string): Promise<void> {
   await transporter.sendMail({
     from: MAIL_FROM,
     to,
-    subject: 'Your MS Advocate password reset code',
+    subject: 'Your EUVisaAdvice password reset code',
     text: `Your password reset code is ${otp}. It expires in 10 minutes. If you did not request this, you can ignore this email.`,
     html: `<p>Your password reset code is:</p><h2 style="letter-spacing:4px">${otp}</h2><p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>`,
   });
