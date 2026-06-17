@@ -10,12 +10,22 @@ import {
   listClientChats,
   getClientChatDetail,
   listRecentActivity,
+  listPackages,
+  createPackage,
+  updatePackage,
+  deletePackage,
 } from '../services/adminService';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
 
 const router = Router();
+
+const PackageSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  price: z.number().min(0),
+  description: z.string().trim().min(1).max(2000),
+});
 
 const UpdateClientSchema = z.object({
   firstName: z.string().trim().min(1).optional(),
@@ -140,6 +150,58 @@ router.get(
     const limit = Math.min(Number(req.query.limit) || 10, 50);
     const activity = await listRecentActivity(limit);
     res.json({ activity });
+  }),
+);
+
+/**
+ * GET /api/admin/packages
+ * Lists all service packages.
+ */
+router.get(
+  '/packages',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const packages = await listPackages();
+    res.json({ packages });
+  }),
+);
+
+/**
+ * POST /api/admin/packages
+ * Creates a new service package.
+ */
+router.post(
+  '/packages',
+  asyncHandler(async (req: Request, res: Response) => {
+    const input = PackageSchema.parse(req.body);
+    const pkg = await createPackage(input);
+    res.status(201).json({ package: pkg });
+  }),
+);
+
+/**
+ * PATCH /api/admin/packages/:id
+ * Updates an existing service package.
+ */
+router.patch(
+  '/packages/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw createError('Package not found.', 404);
+    const input = PackageSchema.parse(req.body);
+    const pkg = await updatePackage(req.params.id, input);
+    res.json({ package: pkg });
+  }),
+);
+
+/**
+ * DELETE /api/admin/packages/:id
+ * Deletes a service package.
+ */
+router.delete(
+  '/packages/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw createError('Package not found.', 404);
+    await deletePackage(req.params.id);
+    res.status(204).send();
   }),
 );
 

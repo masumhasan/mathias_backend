@@ -1,6 +1,7 @@
 import { User } from '../models/User';
 import { Conversation } from '../models/Conversation';
 import { AuditLog, AuditEventType } from '../models/AuditLog';
+import { Package } from '../models/Package';
 import { createError } from '../middleware/errorHandler';
 
 export interface LegalAdviceClient {
@@ -278,4 +279,53 @@ export async function listRecentActivity(limit = 10): Promise<ActivityItem[]> {
       timestamp: log.timestamp,
     };
   });
+}
+
+// ── Package management ────────────────────────────────────────────────────────
+
+export interface PackageData {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PackageInput {
+  name: string;
+  price: number;
+  description: string;
+}
+
+function toPackageData(pkg: { _id: { toString(): string }; name: string; price: number; description: string; createdAt: Date; updatedAt: Date }): PackageData {
+  return {
+    id: pkg._id.toString(),
+    name: pkg.name,
+    price: pkg.price,
+    description: pkg.description,
+    createdAt: pkg.createdAt,
+    updatedAt: pkg.updatedAt,
+  };
+}
+
+export async function listPackages(): Promise<PackageData[]> {
+  const packages = await Package.find().sort({ createdAt: -1 }).lean();
+  return packages.map(toPackageData);
+}
+
+export async function createPackage(input: PackageInput): Promise<PackageData> {
+  const pkg = await Package.create(input);
+  return toPackageData(pkg.toObject());
+}
+
+export async function updatePackage(id: string, input: PackageInput): Promise<PackageData> {
+  const pkg = await Package.findByIdAndUpdate(id, input, { new: true, runValidators: true }).lean();
+  if (!pkg) throw createError('Package not found.', 404);
+  return toPackageData(pkg);
+}
+
+export async function deletePackage(id: string): Promise<void> {
+  const pkg = await Package.findByIdAndDelete(id).lean();
+  if (!pkg) throw createError('Package not found.', 404);
 }
