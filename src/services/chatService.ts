@@ -17,11 +17,12 @@ const MAX_BODY_FULL_REQUEST = 8_000; // user explicitly asked for full email con
 const MAX_HISTORY_MESSAGES = 10;
 
 /** Detect what the user actually wants so we can tune the retrieval. */
-function detectIntent(query: string): { wantsSent: boolean; wantsFullBody: boolean } {
+function detectIntent(query: string): { wantsSent: boolean; wantsFullBody: boolean; wantsStatus: boolean } {
   const q = query.toLowerCase();
   const wantsSent = /\b(i sent|sent by me|from me|i wrote|i emailed|emails? i (have )?sent|outgoing)\b/.test(q);
   const wantsFullBody = /\b(full|entire|complete|whole|exact|verbatim|type (out|in)?|write out|print|show me the (full|entire|complete|whole)|reproduce)\b/.test(q);
-  return { wantsSent, wantsFullBody };
+  const wantsStatus = /\b(status|update|what.*happen|what.*done|progress|case|situation|latest|recent|timeline|events?|history)\b/.test(q);
+  return { wantsSent, wantsFullBody, wantsStatus };
 }
 
 export interface CreateSessionResult {
@@ -81,7 +82,7 @@ export async function generateGroundedReply(
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     temperature: 0.2,
-    max_tokens: intent.wantsFullBody ? 4000 : 1200,
+    max_tokens: intent.wantsFullBody ? 4000 : intent.wantsStatus ? 2500 : 1200,
     messages: [
       { role: 'system', content: CLIENT_CHAT_SYSTEM_PROMPT },
       ...historyMessages,
