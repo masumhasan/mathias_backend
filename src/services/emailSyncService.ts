@@ -82,9 +82,14 @@ interface EmailDoc {
 
 class EmailSyncService {
   private isSyncing = false;
+  private isRepairing = false;
 
   get syncing(): boolean {
     return this.isSyncing;
+  }
+
+  get repairing(): boolean {
+    return this.isRepairing;
   }
 
   async sync(): Promise<void> {
@@ -186,6 +191,121 @@ class EmailSyncService {
           // ignore — connection may already be dead
         }
       }
+    }
+  }
+
+  /**
+   * Finds every email stored with an empty textBody, re-fetches the raw
+   * message from IMAP for that exact folder+uid, re-parses it with the
+   * current stripHtml() fallback, and patches ONLY the textBody field.
+   * Runs independently of the regular sync so it can be triggered on-demand.
+   */
+  async repairEmptyBodies(): Promise<{ repaired: number; failed: number; skipped: number }> {
+    if (this.isRepairing) {
+      logger.warn('Body repair already in progress — skipping');
+      return { repaired: 0, failed: 0, skipped: 0 };
+    }
+    this.isRepairing = true;
+    logger.info('Body repair started: finding emails with empty textBody');
+
+    let repaired = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    try {
+      // Collect all {folder, uid, _id} for emails with empty body
+      const empties = await Email.find({ textBody: { $in: ['', null] } })
+        .select('folder uid _id')
+        .lean();
+
+      logger.info(`Body repair: ${empties.length} emails with empty textBody`);
+
+      if (!empties.length) return { repaired: 0, failed: 0, skipped: 0 };
+
+      // Group by folder to open one IMAP connection per folder
+      const byFolder = new Map<string, { uid: number; _id: unknown }[]>();
+      for (const e of empties) {
+        const list = byFolder.get(e.folder) ?? [];
+        list.push({ uid: e.uid, _id: e._id });
+        byFolder.set(e.folder, list);
+      }
+
+      for (const [folder, records] of byFolder) {
+        const client = new ImapFlow(getImapConfig());
+        client.on('error', (err: Error) =>
+          logger.warn(`IMAP error during repair on "${folder}": ${err.message}`),
+        );
+
+        try {
+          await client.connect();
+          let lock: { release: () => void } | null = null;
+
+          try {
+            lock = await client.getMailboxLock(folder);
+
+            for (let i = 0; i < records.length; i += BATCH_SIZE) {
+              const batch = records.slice(i, i + BATCH_SIZE);
+              const uidList = batch.map((r) => r.uid).join(',');
+
+              const rawMessages: RawMessage[] = [];
+              try {
+                for await (const msg of client.fetch(
+                  uidList,
+                  { source: true, uid: true, flags: true },
+                  { uid: true },
+                )) {
+                  rawMessages.push({
+                    uid: msg.uid,
+                    source: msg.source as Buffer,
+                    flags: msg.flags as Set<string>,
+                  });
+                }
+              } catch (fetchErr) {
+                logger.warn(`Body repair: fetch failed for folder "${folder}" batch — ${(fetchErr as Error).message}`);
+                failed += batch.length;
+                continue;
+              }
+
+              for (const raw of rawMessages) {
+                try {
+                  const parsed = await simpleParser(raw.source);
+                  const textBody = (
+                    parsed.text || (parsed.html ? stripHtml(parsed.html) : '')
+                  ).slice(0, MAX_TEXT_BODY);
+
+                  if (!textBody) {
+                    skipped++;
+                    continue;
+                  }
+
+                  await Email.updateOne(
+                    { folder, uid: raw.uid },
+                    { $set: { textBody } },
+                  );
+                  repaired++;
+                } catch (parseErr) {
+                  logger.warn(`Body repair: parse failed uid ${raw.uid} — ${(parseErr as Error).message}`);
+                  failed++;
+                }
+              }
+
+              if (i + BATCH_SIZE < records.length) await sleep(INTER_BATCH_DELAY_MS);
+            }
+          } finally {
+            lock?.release();
+          }
+        } catch (connErr) {
+          logger.error(`Body repair: could not connect for folder "${folder}" — ${(connErr as Error).message}`);
+          failed += records.length;
+        } finally {
+          try { await client.logout(); } catch { /* ignore */ }
+        }
+      }
+
+      logger.info(`Body repair complete: ✓ ${repaired} repaired  ✗ ${failed} failed  ⏭ ${skipped} skipped (still no body on server)`);
+      return { repaired, failed, skipped };
+    } finally {
+      this.isRepairing = false;
     }
   }
 

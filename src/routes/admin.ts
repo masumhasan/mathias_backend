@@ -18,6 +18,7 @@ import {
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
+import { emailSyncService } from '../services/emailSyncService';
 
 const router = Router();
 
@@ -202,6 +203,24 @@ router.delete(
     if (!mongoose.isValidObjectId(req.params.id)) throw createError('Package not found.', 404);
     await deletePackage(req.params.id);
     res.status(204).send();
+  }),
+);
+
+/**
+ * POST /api/admin/repair-email-bodies
+ * Re-fetches emails from IMAP that have an empty textBody and patches them.
+ * Safe to call repeatedly — already-repaired emails are skipped automatically.
+ */
+router.post(
+  '/repair-email-bodies',
+  asyncHandler(async (_req: Request, res: Response) => {
+    if (emailSyncService.repairing) {
+      res.status(409).json({ error: 'Body repair already in progress.' });
+      return;
+    }
+    // Fire-and-forget — repair runs in the background; status is in server logs
+    void emailSyncService.repairEmptyBodies();
+    res.json({ message: 'Body repair started. Check server logs for progress.' });
   }),
 );
 
