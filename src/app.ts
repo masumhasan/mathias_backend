@@ -50,6 +50,27 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/client-chat', clientChatRoutes);
 
+app.get('/', (_req, res) => {
+  const dbState = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const dbStatus = dbState[require('mongoose').connection.readyState] ?? 'unknown';
+  const healthy = dbStatus === 'connected';
+
+  res.status(healthy ? 200 : 503).json({
+    name: 'EUVisaAdvice API',
+    status: healthy ? '✅ Backend is running' : '⚠️ Backend degraded',
+    health: healthy ? 'healthy' : 'degraded',
+    database: dbStatus,
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/api/health',
+    
+      chat: '/api/legal-chat',
+      clientChat: '/api/client-chat',
+
+    },
+  });
+});
+
 // 404 handler
 app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found' });
