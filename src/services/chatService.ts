@@ -82,7 +82,7 @@ export async function generateGroundedReply(
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     temperature: 0.2,
-    max_tokens: intent.wantsFullBody ? 4000 : intent.wantsStatus ? 2500 : 1200,
+    max_tokens: intent.wantsFullBody ? 4000 : intent.wantsStatus ? 3500 : 1200,
     messages: [
       { role: 'system', content: CLIENT_CHAT_SYSTEM_PROMPT },
       ...historyMessages,
@@ -199,6 +199,16 @@ function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: b
         ? `${body}${truncated}`
         : '[Email body not stored — HTML-only email synced before text extraction was enabled. Use subject line and metadata above for context.]';
 
+      const attachmentLines =
+        email.attachments && email.attachments.length
+          ? `Attachments (${email.attachments.length}):\n${email.attachments
+              .map(
+                (a) =>
+                  `  - ${a.filename} (${a.contentType}${a.size ? ', ' + Math.round(a.size / 1024) + ' KB' : ''})`,
+              )
+              .join('\n')}\n`
+          : '';
+
       // Label the last email explicitly as the most recent so the AI can anchor status answers
       const recencyLabel = idx === total - 1 ? ' — MOST RECENT' : '';
 
@@ -206,7 +216,7 @@ function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: b
 Date: ${email.date.toUTCString()}
 From: ${from}
 To: ${to}
-${cc}Subject: ${email.subject}
+${cc}${attachmentLines}Subject: ${email.subject}
 ---
 ${bodySection}
 ---`;
