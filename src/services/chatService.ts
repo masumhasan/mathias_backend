@@ -165,6 +165,17 @@ async function findRelevantEmails(
   return emails;
 }
 
+/** Replaces the client's email address (and name) with "You (Client)" in any address field. */
+function maskClient(addresses: { name?: string; address: string }[], userEmail: string): string {
+  return addresses
+    .map((a) =>
+      a.address.toLowerCase() === userEmail.toLowerCase()
+        ? 'You (Client)'
+        : formatAddress(a),
+    )
+    .join(', ');
+}
+
 function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: boolean): string {
   if (!emails.length) return 'No email records found for this client.';
 
@@ -176,9 +187,11 @@ function buildEmailContext(emails: IEmail[], userEmail: string, wantsFullBody: b
       const fromAddresses = email.from.map((a) => a.address.toLowerCase());
       const direction = fromAddresses.includes(userEmail.toLowerCase()) ? 'SENT BY CLIENT' : 'RECEIVED BY CLIENT';
 
-      const from = email.from.map((a) => formatAddress(a)).join(', ');
-      const to = email.to.map((a) => a.address).join(', ');
-      const cc = email.cc.length ? `CC: ${email.cc.map((a) => a.address).join(', ')}\n` : '';
+      // Replace the client's own address with "You (Client)" in all header fields
+      // so the AI always refers to them as "You" rather than their real name.
+      const from = maskClient(email.from, userEmail);
+      const to = maskClient(email.to, userEmail);
+      const cc = email.cc.length ? `CC: ${maskClient(email.cc, userEmail)}\n` : '';
       const body = (email.textBody ?? '').slice(0, bodyLimit);
       const truncated = (email.textBody ?? '').length > bodyLimit ? '\n[... body truncated ...]' : '';
 

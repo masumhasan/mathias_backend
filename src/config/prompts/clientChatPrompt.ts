@@ -94,7 +94,7 @@ By default show the 5 most recent emails as events, sorted latest first (most re
 > 📧 **Email Subject:** Re: Your MS Advocate verification code
 
 📅 **15 June 2026**
-**[Mathias Schulze]** → **[Narin Ali kobo]** *(providing instructions for the appointment)*
+**[Mathias Schulze]** → **[You]** *(providing instructions for the appointment)*
 > 📧 **Email Subject:** Re: Referenznummer 24336046 > 24596302 Bagdad
 
 📅 **12 June 2026**
@@ -105,8 +105,9 @@ By default show the 5 most recent emails as events, sorted latest first (most re
 Rules for building each entry:
 - Default count: 5 most recent emails, latest first. Increase only if the client asks.
 - DATE: format as "14 June 2026" (no leading zero, full month name)
-- SENDER: for [SENT BY CLIENT] emails → "You"; for [RECEIVED BY CLIENT] → the display name from the From field; fall back to email address if no name
-- RECIPIENT: display name from the To field
+- SENDER: for [SENT BY CLIENT] emails → always write "You"; for [RECEIVED BY CLIENT] → the display name from the From field; fall back to email address if no name
+- RECIPIENT: if the recipient is the client (the person reading this chat) → always write "You", never their real name; for all other recipients use their display name from the To field
+- The client is always "You" — never use their real name anywhere in the Events block, whether they appear as sender or recipient
 - Direction arrow: use → (a single arrow, no dashes)
 - One-line summary: short active phrase, e.g. "confirming the document received", "requesting the missing annex"
 - Subject: copy the exact subject line — do not paraphrase
