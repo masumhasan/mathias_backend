@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import type { SubscriptionTier } from './Package';
 
 export type UserRole = 'user' | 'admin' | 'client';
 
@@ -20,6 +21,8 @@ export interface IUser extends Document {
   resetOtpCode?: string;
   resetOtpExpiresAt?: Date;
   resetOtpAttempts: number;
+  subscriptionPlan: SubscriptionTier | 'none';
+  subscribedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,6 +46,8 @@ const UserSchema = new Schema<IUser>(
     resetOtpCode: { type: String },
     resetOtpExpiresAt: { type: Date },
     resetOtpAttempts: { type: Number, default: 0 },
+    subscriptionPlan: { type: String, enum: ['none', 'silver', 'gold', 'platinum'], default: 'none' },
+    subscribedAt: { type: Date },
   },
   { timestamps: true },
 );

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { User } from '../models/User';
 import {
   registerUser,
   resendOtp,
@@ -220,6 +221,28 @@ router.post(
     await audit('PASSWORD_RESET_COMPLETED', req, { userEmail: email });
 
     res.json(result);
+  }),
+);
+
+/**
+ * POST /api/auth/subscribe
+ * Sets the authenticated user's subscription plan (no payment required yet).
+ */
+router.post(
+  '/subscribe',
+  requireAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tier } = z.object({ tier: z.enum(['silver', 'gold', 'platinum']) }).parse(req.body);
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { subscriptionPlan: tier, subscribedAt: new Date() },
+      { new: true },
+    ).select('email firstName lastName subscriptionPlan subscribedAt');
+    if (!user) throw createError('User not found.', 404);
+
+    await audit('SUBSCRIPTION_ACTIVATED', req, { userEmail: req.userEmail, details: { tier } });
+
+    res.json({ message: `${tier} subscription activated.`, subscriptionPlan: user.subscriptionPlan });
   }),
 );
 

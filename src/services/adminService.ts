@@ -258,6 +258,7 @@ const ACTIVITY_LABELS: Record<AuditEventType, string> = {
   SYNC_ERROR: 'hit an email sync error',
   RATE_LIMIT_EXCEEDED: 'hit a rate limit',
   VALIDATION_ERROR: 'submitted invalid data',
+  SUBSCRIPTION_ACTIVATED: 'activated a subscription',
 };
 
 /**
@@ -288,6 +289,7 @@ export interface PackageData {
   name: string;
   price: number;
   description: string;
+  tier: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -296,14 +298,23 @@ export interface PackageInput {
   name: string;
   price: number;
   description: string;
+  tier: string;
 }
 
-function toPackageData(pkg: { _id: { toString(): string }; name: string; price: number; description: string; createdAt: Date; updatedAt: Date }): PackageData {
+function inferTierFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes('platinum')) return 'platinum';
+  if (lower.includes('gold')) return 'gold';
+  return 'silver';
+}
+
+function toPackageData(pkg: { _id: { toString(): string }; name: string; price: number; description: string; tier?: string; createdAt: Date; updatedAt: Date }): PackageData {
   return {
     id: pkg._id.toString(),
     name: pkg.name,
     price: pkg.price,
     description: pkg.description,
+    tier: pkg.tier ?? inferTierFromName(pkg.name),
     createdAt: pkg.createdAt,
     updatedAt: pkg.updatedAt,
   };

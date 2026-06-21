@@ -1,6 +1,13 @@
 import { Conversation } from '../models/Conversation';
+import { User } from '../models/User';
 import { sendLegalChatMessage } from './legalChatService';
 import { createError } from '../middleware/errorHandler';
+
+const CONVERSATION_LIMITS: Record<string, number> = {
+  silver: 3,
+  gold: 10,
+  platinum: Infinity,
+};
 
 export interface ConversationSummary {
   id: string;
@@ -41,6 +48,25 @@ export async function listConversations(userId: string): Promise<ConversationSum
 }
 
 export async function createConversation(userId: string): Promise<ConversationSummary> {
+  const user = await User.findById(userId).select('subscriptionPlan').lean();
+  const plan = user?.subscriptionPlan ?? 'none';
+
+  if (plan === 'none') {
+    throw createError('SUBSCRIPTION_REQUIRED', 402);
+  }
+
+  const limit = CONVERSATION_LIMITS[plan] ?? 0;
+  if (isFinite(limit)) {
+    const count = await Conversation.countDocuments({ userId, ...LEGAL_FILTER });
+    if (count >= limit) {
+      const upgradeTarget = plan === 'silver' ? 'gold' : null;
+      const msg = upgradeTarget
+        ? `CONVERSATION_LIMIT:${plan}:${limit}:${upgradeTarget}`
+        : `CONVERSATION_LIMIT:${plan}:${limit}:none`;
+      throw createError(msg, 403);
+    }
+  }
+
   const conversation = await Conversation.create({ userId, kind: 'legal', title: 'New Consultation', messages: [] });
   return { id: conversation.id as string, title: conversation.title, updatedAt: conversation.updatedAt };
 }

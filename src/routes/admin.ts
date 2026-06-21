@@ -26,6 +26,7 @@ const PackageSchema = z.object({
   name: z.string().trim().min(1).max(100),
   price: z.number().min(0),
   description: z.string().trim().min(1).max(2000),
+  tier: z.enum(['silver', 'gold', 'platinum']),
 });
 
 const UpdateClientSchema = z.object({
@@ -45,6 +46,18 @@ const BanClientSchema = z.object({
 function requireValidId(id: string): void {
   if (!mongoose.isValidObjectId(id)) throw createError('Client not found.', 404);
 }
+
+/**
+ * GET /api/admin/public-packages
+ * Public — returns all subscription packages for the subscription selection screen.
+ */
+router.get(
+  '/public-packages',
+  asyncHandler(async (_req: Request, res: Response) => {
+    const packages = await listPackages();
+    res.json({ packages });
+  }),
+);
 
 router.use(requireAuth, requireAdmin);
 

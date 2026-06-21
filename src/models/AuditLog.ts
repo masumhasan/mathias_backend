@@ -20,7 +20,8 @@ export type AuditEventType =
   | 'SYNC_FOLDER_DONE'
   | 'SYNC_ERROR'
   | 'RATE_LIMIT_EXCEEDED'
-  | 'VALIDATION_ERROR';
+  | 'VALIDATION_ERROR'
+  | 'SUBSCRIPTION_ACTIVATED';
 
 export interface IAuditLog extends Document {
   eventType: AuditEventType;

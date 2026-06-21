@@ -29,6 +29,8 @@ export interface PublicUser {
   city?: string;
   bio?: string;
   emailVerified: boolean;
+  subscriptionPlan: string;
+  subscribedAt?: Date;
 }
 
 export interface UpdateProfileInput {
@@ -52,6 +54,8 @@ function toPublicUser(user: IUser): PublicUser {
     city: user.city,
     bio: user.bio,
     emailVerified: user.emailVerified,
+    subscriptionPlan: user.subscriptionPlan ?? 'none',
+    subscribedAt: user.subscribedAt,
   };
 }
 
