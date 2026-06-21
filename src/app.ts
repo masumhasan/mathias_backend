@@ -9,6 +9,7 @@ import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import clientChatRoutes from './routes/clientChat';
+import pagesRoutes from './routes/pages';
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/legal-chat', legalChatRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/client-chat', clientChatRoutes);
+app.use('/api/pages', pagesRoutes);
 
 app.get('/', (_req, res) => {
   const dbState = ['disconnected', 'connected', 'connecting', 'disconnecting'];

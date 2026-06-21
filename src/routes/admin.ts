@@ -19,6 +19,7 @@ import { asyncHandler, createError } from '../middleware/errorHandler';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireAdmin } from '../middleware/requireAdmin';
 import { emailSyncService } from '../services/emailSyncService';
+import { PolicyPage, PolicyType } from '../models/PolicyPage';
 
 const router = Router();
 
@@ -234,6 +235,41 @@ router.post(
     // Fire-and-forget — repair runs in the background; status is in server logs
     void emailSyncService.repairEmptyBodies();
     res.json({ message: 'Body repair started. Check server logs for progress.' });
+  }),
+);
+
+const VALID_POLICY_TYPES: PolicyType[] = ['privacy-policy', 'terms-of-service'];
+
+/**
+ * GET /api/admin/pages/:type
+ * Returns current saved content for a policy page.
+ */
+router.get(
+  '/pages/:type',
+  asyncHandler(async (req: Request, res: Response) => {
+    const type = req.params.type as PolicyType;
+    if (!VALID_POLICY_TYPES.includes(type)) throw createError('Page not found.', 404);
+    const page = await PolicyPage.findOne({ type }).lean();
+    res.json({ content: page?.content ?? '', updatedAt: page?.updatedAt ?? null });
+  }),
+);
+
+/**
+ * POST /api/admin/pages/:type
+ * Saves (upserts) the HTML content for a policy page.
+ */
+router.post(
+  '/pages/:type',
+  asyncHandler(async (req: Request, res: Response) => {
+    const type = req.params.type as PolicyType;
+    if (!VALID_POLICY_TYPES.includes(type)) throw createError('Page not found.', 404);
+    const { content } = z.object({ content: z.string() }).parse(req.body);
+    const page = await PolicyPage.findOneAndUpdate(
+      { type },
+      { content },
+      { upsert: true, new: true },
+    );
+    res.json({ message: 'Saved.', updatedAt: page.updatedAt });
   }),
 );
 
